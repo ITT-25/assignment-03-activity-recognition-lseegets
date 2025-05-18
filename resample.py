@@ -1,12 +1,8 @@
 import pandas as pd
-
-DIRECTORY = 'data/'
-NAME = 'leeann'
-ACTION = 'running'
-NUMBER = 1
+from utils import FILE_PATH
 
 # read csv
-df = pd.read_csv(f'{DIRECTORY}{NAME}-{ACTION}-{NUMBER}.csv')
+df = pd.read_csv(FILE_PATH)
 
 # convert timestamps to datetime format
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
@@ -23,4 +19,4 @@ df_resampled['timestamp'] = (df_resampled['timestamp'] - pd.Timestamp("1970-01-0
 
 # save resampled data to to csv using 'id' as index column name
 df_resampled.index.name = 'id'
-df_resampled.to_csv(f'{DIRECTORY}{NAME}-{ACTION}-{NUMBER}.csv', index=True)
+df_resampled.to_csv(FILE_PATH, index=True)
