@@ -1,4 +1,4 @@
-from activity_recognizer import Activity
+from activity_recognizer import Recognizer
 import pyglet
 from pyglet import window, clock
 from random import shuffle
@@ -7,41 +7,57 @@ import threading
 
 from utils import WINDOW_WIDTH, WINDOW_HEIGHT, ACTIVITIES, IMG_DIR, FONT_NAME, FONT_COLOR, ACTIVE_COLOR
 
-DURATION = 2
-UPDATE_RATE = 0.1
-PREP_TIME = 5.0
+DURATION = 2      # How long one activity should be performed
+UPDATE_RATE = 0.1   # Rate at which the pyglet window is updated
+PREP_TIME = 2    # Time to prepare for the next activity (during cooldown)
 
-in_cooldown = False
-cooldown = PREP_TIME
+started = False         # Checks if workout has started
+finished = False        # Checks if workout has finished
+in_cooldown = False     # Checks if cooldown is active
+cooldown = PREP_TIME    
 countdown = DURATION
-score = 0
-activities = ACTIVITIES.copy()
+score = 0               # Score to keep track of performance (will be displayed after workout)
+
+activities = ACTIVITIES.copy()          # Make a copy of all available activities to shuffle them
 shuffle(activities)
-current_activity = activities.pop()
-user_activity = None
+current_activity = activities.pop()     
+user_activity = None                    # Predicted activity based on the sensor data
 
-started = False
-finished = False
-activity = Activity()
-
+recognizer = Recognizer()   # The activity recognizer
 win = window.Window(WINDOW_WIDTH, WINDOW_HEIGHT)
-pyglet.gl.glClearColor(0.902, 0.961, 1.0, 1.0)
+pyglet.gl.glClearColor(0.902, 0.961, 1.0, 1.0)  # background color
 
+# The images for the activities
 img1 = pyglet.sprite.Sprite(pyglet.image.load(f'{IMG_DIR}{current_activity}_1.png'), x=200, y=100)
 img2 = pyglet.sprite.Sprite(pyglet.image.load(f'{IMG_DIR}{current_activity}_2.png'), x=400, y=100)
 img1.scale = 0.2
 img2.scale = 0.2
 
+
+# Train the classifier (this function gets called after pressing the start button)
+
+def start_app():
+    global in_cooldown
+    classifier, scaler = recognizer.train_classifier()
+    recognizer.classifier = classifier
+    recognizer.scaler = scaler
+    in_cooldown = True
+
+
+# Check if the incoming data from the DIPPID device matches the current activity
+
 def update(dt):
-    global activity, started, user_activity, current_activity, score
+    global recognizer, started, user_activity, current_activity, score
     if started:
-        pred = activity.predict_live_data()
+        pred = recognizer.predict_live_data()
         if pred:
             user_activity = pred
             if user_activity == current_activity:
                 score += dt
             print(f"Predicted activity: {pred}")
 
+
+# Count down during workout. Add a cooldown phase between activities
 
 def count_down(dt):
     global countdown, cooldown, in_cooldown, current_activity, activities, finished, started
@@ -50,9 +66,11 @@ def count_down(dt):
             cooldown -= dt
         else:
             in_cooldown = False
-    elif countdown > 0 and started and activity.finished_training and activity.got_live_data:
+    elif countdown > 0 and started and recognizer.finished_training and recognizer.got_live_data:
         countdown -= dt
+
     if countdown <= 0:
+        # Check if there are still activities to do. If so, update the current activity. If not, end the workout
         if activities:
             cooldown = PREP_TIME
             in_cooldown = True
@@ -67,13 +85,7 @@ clock.schedule_interval(update, UPDATE_RATE)
 clock.schedule_interval(count_down, UPDATE_RATE)
 
 
-def train_model():
-    global in_cooldown
-    classifier, scaler = activity.train_classifier()
-    activity.classifier = classifier
-    activity.scaler = scaler
-    in_cooldown = True
-
+# Update the sprites based on the current activity
 
 def update_images():
     global img1, img2, current_activity
@@ -87,7 +99,6 @@ def draw_start_screen():
 def draw_loading_screen():
     pyglet.text.Label('Preparing your workout...', font_name=FONT_NAME, font_size=36, color=FONT_COLOR, x=WINDOW_WIDTH//2, y=WINDOW_HEIGHT//2 + 40, anchor_x='center', anchor_y='center').draw()
     pyglet.text.Label('During workout, follow the instructions on the screen', font_name=FONT_NAME, font_size=15, color=FONT_COLOR, x=WINDOW_WIDTH//2, y=WINDOW_HEIGHT//2 - 40, anchor_x='center', anchor_y='center').draw()
-
 
 def draw_cooldown_screen():
     veil = pyglet.shapes.Rectangle(x=0, y=0, width=WINDOW_WIDTH, height=WINDOW_HEIGHT, color=(100, 100, 100, 180))
@@ -107,32 +118,36 @@ def draw_active_screen():
 
 def draw_end_screen():
     pyglet.text.Label('You did it!', font_name=FONT_NAME, font_size=36, color=FONT_COLOR, x=WINDOW_WIDTH//2, y=WINDOW_HEIGHT//2 + 40, anchor_x='center', anchor_y='center').draw()
-    pyglet.text.Label(f'You were on targt for {score/(4*DURATION):.2%} of your workout.', font_name=FONT_NAME, font_size=20, color=FONT_COLOR, x=WINDOW_WIDTH//2, y=WINDOW_HEIGHT//2 - 40, anchor_x='center', anchor_y='center').draw()
+    pyglet.text.Label(f'You were on target for {score/(4*DURATION):.2%} of your workout.', font_name=FONT_NAME, font_size=20, color=FONT_COLOR, x=WINDOW_WIDTH//2, y=WINDOW_HEIGHT//2 - 40, anchor_x='center', anchor_y='center').draw()
 
 
 def handle_btn_press(data):
-    global started, finished
+    global started, finished, in_cooldown
     if int(data) == 1 and not started and not finished:
         started = True
-        threading.Thread(target=train_model, daemon=True).start()
+        threading.Thread(target=start_app, daemon=True).start()
 
-activity.sensor.register_callback('button_1', handle_btn_press)
-activity.sensor.register_callback('button_2', handle_btn_press)
-activity.sensor.register_callback('button_3', handle_btn_press)
+recognizer.sensor.register_callback('button_1', handle_btn_press)
+recognizer.sensor.register_callback('button_2', handle_btn_press)
+recognizer.sensor.register_callback('button_3', handle_btn_press)
     
+
 @win.event
 def on_draw():
     win.clear()
     if not started and not finished:
         draw_start_screen()
-    elif started and not activity.finished_training and not activity.got_live_data:
+    elif started and not recognizer.finished_training and not recognizer.got_live_data:
         draw_loading_screen()
     elif in_cooldown:
         draw_cooldown_screen()
-    elif started and activity.finished_training and activity.got_live_data:
+    elif started and recognizer.finished_training and recognizer.got_live_data:
         draw_active_screen()
     elif finished and not started:
         draw_end_screen()
+
+
+# Make sure the program will actually stop upon closing the window
 
 @win.event
 def on_close():

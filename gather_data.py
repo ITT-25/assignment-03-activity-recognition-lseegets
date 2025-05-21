@@ -15,7 +15,7 @@ id = 0
 
 df = pd.DataFrame(columns=HEADERS)
 df.to_csv(FILE_PATH, index=False)
-print("Ready! Press button_3 to start recording")
+print("Ready! Press any button to start recording")
 
 
 def handle_btn(data):
@@ -25,10 +25,13 @@ def handle_btn(data):
         is_recording = True
         print("Is recording: ", is_recording)
 
+sensor.register_callback('button_1', handle_btn)
+sensor.register_callback('button_2', handle_btn)
 sensor.register_callback('button_3', handle_btn)
 
 
 while True:
+    # Save accelerometer and gyroscope data as one DataFrame each while RECORDING_SPAN has not elapsed
     if is_recording and (time.time() - start_time <= RECORDING_SPAN):
         if sensor.has_capability('accelerometer'):
             acc_df = pd.DataFrame({
@@ -44,11 +47,15 @@ while True:
                 'gyro_z': [sensor.get_value('gyroscope')['z']]
             })
 
+        # Save ID and timestamp to another DataFrame
         gen_df = pd.DataFrame({'id': [id], 'timestamp': [time.time()]})
+
+        # Concatenate all three DataFrames and save result to .csv file
         final_df = pd.concat([gen_df, acc_df, gyro_df], axis=1)
         final_df.to_csv(FILE_PATH, mode='a', index=False, header=False)
         id += 1
 
+    # Stop recording once RECORDING_SPAN has elapsed
     if is_recording and (time.time() - start_time > RECORDING_SPAN):
         is_recording = False
         print("Done recording")

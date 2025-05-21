@@ -13,16 +13,16 @@ from collections import deque
 PORT = 5700
 LIVE_DATA_SIZE = 50
 
-class Activity:
+class Recognizer:
 
     def __init__(self):
         self.live_data = deque(maxlen=LIVE_DATA_SIZE)
-        self.order = 1
-        self.sampling_rate = 100
-        self.cutoff_frequency = 3
+        self.order = 1  # Order for the Butterworth filter
+        self.sampling_rate = 100    # Sampling rate for the Butterworth filter
+        self.cutoff_frequency = 3   # Cutoff frequency or the Butterworth filter
         self.butter_filter = signal.butter(self.order, self.cutoff_frequency, btype="low", analog=False, output="sos", fs=self.sampling_rate)
-        self.finished_training = False
-        self.got_live_data = False
+        self.finished_training = False  # Track if training the classifier has finished
+        self.got_live_data = False      # Track if enough live data from the input device is available
         self.sensor = SensorUDP(PORT)
 
         self.classifier = None
@@ -131,37 +131,48 @@ class Activity:
             data_list.append(self.extract_features(csv_df, label=label))
 
         df = pd.concat(data_list, ignore_index=True)
-
         df_to_scale = df.drop(columns=['label'])
+
+        # Map the activities to numeric values
         df['class'] = df['label'].map(LABEL_DICT)
 
+        # Standardize features via scaling
         scaler = StandardScaler()
         scaled_samples = scaler.fit_transform(df_to_scale)
 
+        # Split the training data 80/20
         features_train, features_test, classes_train, classes_test = model_selection.train_test_split(scaled_samples, df['class'], test_size=0.2)
 
         classifier = OneVsOneClassifier(svm.SVC(kernel='poly'))
         classifier.fit(features_train, classes_train)
 
+        # Test the classifier
         pred = classifier.predict(features_test)
         print(f"Accuracy: {metrics.accuracy_score(classes_test, pred):.2%}")
         print("Classifier training complete.")
         self.finished_training = True
+
         return classifier, scaler
     
 
     def predict_live_data(self):
+        # Get the incoming data from the DIPPID device and append it to a list
         new_data = self.get_live_data()
         if new_data:
             self.live_data.append(new_data)
 
         if len(self.live_data) == LIVE_DATA_SIZE:
+            # Once the list has enough values, convert the list to a DataFrame and extract the features
             self.got_live_data = True
             feature_df = self.extract_features(pd.DataFrame(self.live_data))
+
+            # Reorder the columns so they match the training data
             ordered_df = feature_df[self.scaler.feature_names_in_]
             
+            # Apply the same scaler used during training
             ordered_df_scaled = self.scaler.transform(ordered_df)
 
+            # Predict the data. Get the label by the predicted class value
             pred_class = self.classifier.predict(ordered_df_scaled)[0]
             pred_label = None
             for key, value in LABEL_DICT.items():
@@ -169,4 +180,5 @@ class Activity:
                     pred_label = key
                     break
                 
+            # Return the label so that fitness_trainer can check if it matches the required activity
             return pred_label
