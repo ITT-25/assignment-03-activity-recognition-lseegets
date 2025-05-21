@@ -133,7 +133,7 @@ class Recognizer:
         df = pd.concat(data_list, ignore_index=True)
         df_to_scale = df.drop(columns=['label'])
 
-        # Map the activities to numeric values
+        # Map the activity labels to numeric values
         df['class'] = df['label'].map(LABEL_DICT)
 
         # Standardize features via scaling
@@ -152,7 +152,8 @@ class Recognizer:
         print("Classifier training complete.")
         self.finished_training = True
 
-        return classifier, scaler
+        self.classifier = classifier
+        self.scaler = scaler
     
 
     def predict_live_data(self):

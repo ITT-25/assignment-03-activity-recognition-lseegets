@@ -16,13 +16,13 @@
     ```
 
 # Gathering Training Data
+- In utils.py, set the NAME, NUMBER, and ACTIVITY variables
 - Run the program with the following command:
 
     ```
     py gather_data.py
     ```
 
-- In utils.py, set the NAME, NUMBER, and ACTIVITY variables
 - Press any button on your DIPPID input device to start recording movement data. After 10 seconds, recording will stop on its own
 - Acceleration and gyroscope data will be saved to a .csv file along with a timestamp and an ID for each row. The .csv file will be named after the variables in utils.py
 - .csv files can be found in their respective subdirectories the data/ directory
